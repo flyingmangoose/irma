@@ -11,35 +11,6 @@
             background-color: #f5f5f5;
             font-family: Arial, sans-serif;
         }
-        .login-container {
-            max-width: 400px;
-            margin: 100px auto;
-            padding: 20px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        }
-        .title {
-            font-size: 24px;
-            margin-bottom: 30px;
-            color: #333;
-        }
-        .form-control {
-            margin-bottom: 20px;
-        }
-        .btn-login {
-            width: 100%;
-            padding: 12px;
-            background-color: #2196F3;
-            border: none;
-            color: white;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-        }
-        .btn-login:hover {
-            background-color: #1976D2;
-        }
         .home-container {
             padding: 20px;
             max-width: 1200px;
@@ -73,24 +44,9 @@
 </head>
 <body>
     <div id="app">
-        <!-- Login Page -->
-        <div v-if="!isLoggedIn" class="login-container">
-            <h1 class="title">I.R.M.A.</h1>
-            <div class="mb-3">
-                <label for="username" class="form-label">Username</label>
-                <input type="text" class="form-control" id="username" v-model="username">
-            </div>
-            <div class="mb-3">
-                <label for="password" class="form-label">Password</label>
-                <input type="password" class="form-control" id="password" v-model="password">
-            </div>
-            <button class="btn-login" @click="login">LOGIN</button>
-        </div>
-
-        <!-- Home Page -->
-        <div v-else class="home-container">
+        <div class="home-container">
             <div class="welcome-banner">
-                <h1>Welcome, {{ username }}!</h1>
+                <h1>Welcome to I.R.M.A.</h1>
                 <p>{{ currentDate }}</p>
             </div>
 
@@ -99,11 +55,11 @@
                     <h3>Enter Time</h3>
                     <p>Submit and manage your timesheets</p>
                 </div>
-                <div v-if="isManager || isSupervisor" class="action-card" @click="goToApprovals">
+                <div class="action-card" @click="goToApprovals">
                     <h3>Review Timesheets</h3>
                     <p>{{ pendingApprovals }} timesheets pending review</p>
                 </div>
-                <div v-if="isManager" class="action-card" @click="goToProjects">
+                <div class="action-card" @click="goToProjects">
                     <h3>Project Overview</h3>
                     <p>{{ activeProjects }} active projects</p>
                 </div>
@@ -115,13 +71,8 @@
         new Vue({
             el: '#app',
             data: {
-                username: '',
-                password: '',
-                isLoggedIn: false,
-                isManager: false,
-                isSupervisor: false,
-                pendingApprovals: 0,
-                activeProjects: 0
+                pendingApprovals: 5,
+                activeProjects: 12
             },
             computed: {
                 currentDate() {
@@ -134,26 +85,6 @@
                 }
             },
             methods: {
-                login() {
-                    // For demo purposes, accept any non-empty username/password
-                    if (this.username && this.password) {
-                        this.isLoggedIn = true;
-                        // Set role based on username for demo
-                        this.isManager = this.username.toLowerCase().includes('manager');
-                        this.isSupervisor = this.username.toLowerCase().includes('supervisor');
-                        this.loadDashboardData();
-                        // Store login state
-                        localStorage.setItem('isLoggedIn', 'true');
-                        localStorage.setItem('username', this.username);
-                        localStorage.setItem('isManager', this.isManager);
-                        localStorage.setItem('isSupervisor', this.isSupervisor);
-                    }
-                },
-                loadDashboardData() {
-                    // Simulate loading dashboard data
-                    this.pendingApprovals = Math.floor(Math.random() * 10);
-                    this.activeProjects = Math.floor(Math.random() * 20);
-                },
                 goToTimesheet() {
                     // Navigate to timesheet page
                     console.log('Navigating to timesheet...');
@@ -165,17 +96,6 @@
                 goToProjects() {
                     // Navigate to projects page
                     console.log('Navigating to projects...');
-                }
-            },
-            mounted() {
-                // Check if user was previously logged in
-                const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
-                if (isLoggedIn) {
-                    this.username = localStorage.getItem('username');
-                    this.isManager = localStorage.getItem('isManager') === 'true';
-                    this.isSupervisor = localStorage.getItem('isSupervisor') === 'true';
-                    this.isLoggedIn = true;
-                    this.loadDashboardData();
                 }
             }
         });
