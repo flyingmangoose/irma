@@ -21,69 +21,2768 @@
     </style>
 </head>
 <body>
-    <div id="app">
+    <!-- Add loading indicator -->
+    <div id="loading" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);">
+        Loading...
+    </div>
+
+    <div id="app" v-cloak>
         <v-app>
-            <v-main>
-                <v-container>
-                    <v-row>
-                        <v-col cols="12">
+            <!-- Navigation Tabs -->
+            <v-tabs
+                v-model="activeTab"
+                background-color="primary"
+                dark
+                fixed-tabs
+            >
+                <v-tab href="#home">
+                    <v-icon left>mdi-home</v-icon>
+                    Home
+                </v-tab>
+                <v-tab href="#timesheets">
+                    <v-icon left>mdi-calendar-clock</v-icon>
+                    Timesheets
+                </v-tab>
+                <v-tab href="#projects" v-if="canViewProjects">
+                    <v-icon left>mdi-folder</v-icon>
+                    Projects
+                </v-tab>
+                <v-tab href="#clients" v-if="isManager">
+                    <v-icon left>mdi-account-group</v-icon>
+                    Clients
+                </v-tab>
+            </v-tabs>
+
+            <v-tabs-items v-model="activeTab">
+                <!-- Home Tab -->
+                <v-tab-item value="home">
+                    <v-container>
+                        <!-- Application Title -->
+                        <v-row>
+                            <v-col cols="12">
+                                <div class="text-center mb-4">
+                                    <div class="text-h3 font-weight-light">I.R.M.A.</div>
+                                    <div class="text-subtitle-1 grey--text">Integrated Resource Management Application</div>
+                                </div>
+                            </v-col>
+                        </v-row>
+
+                        <!-- Welcome Banner -->
+                        <v-row>
+                            <v-col cols="12">
+                                <v-card color="primary" dark>
+                                    <v-card-text>
+                                        <div class="text-h5 mb-2">Welcome{{ currentUser ? ', ' + getUserName(currentUser.id) : '' }}!</div>
+                                        <div class="subtitle-1">{{ new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) }}</div>
+                                    </v-card-text>
+                                </v-card>
+                            </v-col>
+                        </v-row>
+
+                        <!-- Quick Actions -->
+                        <v-row class="mt-2">
+                            <v-col cols="12">
+                                <div class="text-h6 mb-2">Quick Actions</div>
+                                <v-row>
+                                    <!-- Employee Quick Actions -->
+                                    <v-col cols="4" v-if="isEmployee">
+                                        <v-card outlined hover @click="activeTab = 'timesheets'">
+                                            <v-card-text class="text-center">
+                                                <v-icon size="36" color="primary">mdi-clock-plus</v-icon>
+                                                <div class="title mt-2">Enter Time</div>
+                                                <div class="caption">Record your work hours</div>
+                                            </v-card-text>
+                                        </v-card>
+                                    </v-col>
+
+                                    <!-- Supervisor/Manager Quick Actions -->
+                                    <v-col cols="4" v-if="isSupervisor || isManager">
+                                        <v-card outlined hover @click="activeTab = 'timesheets'">
+                                            <v-card-text class="text-center">
+                                                <v-icon size="36" color="warning">mdi-clock-check</v-icon>
+                                                <div class="title mt-2">Review Timesheets</div>
+                                                <div class="caption">{{ timesheets.length }} pending approvals</div>
+                                            </v-card-text>
+                                        </v-card>
+                                    </v-col>
+
+                                    <!-- Manager-only Quick Actions -->
+                                    <v-col cols="4" v-if="isManager">
+                                        <v-card outlined hover @click="openProjectDialog()">
+                                            <v-card-text class="text-center">
+                                                <v-icon size="36" color="success">mdi-folder-plus</v-icon>
+                                                <div class="title mt-2">New Project</div>
+                                                <div class="caption">Create a project</div>
+                                            </v-card-text>
+                                        </v-card>
+                                    </v-col>
+
+                                    <!-- Common Quick Actions -->
+                                    <v-col cols="4">
+                                        <v-card outlined hover>
+                                            <v-card-text class="text-center">
+                                                <v-icon size="36" color="info">mdi-file-chart</v-icon>
+                                                <div class="title mt-2">Reports</div>
+                                                <div class="caption">View analytics</div>
+                                            </v-card-text>
+                                        </v-card>
+                                    </v-col>
+                                </v-row>
+                            </v-col>
+                        </v-row>
+
+                        <!-- Dashboard Widgets -->
+                        <v-row class="mt-4">
+                            <!-- Employee Widgets -->
+                            <template v-if="isEmployee">
+                                <v-col cols="8">
+                                    <v-card>
+                                        <v-card-title>
+                                            My Recent Timesheets
+                                            <v-spacer></v-spacer>
+                                            <v-btn small text color="primary" @click="activeTab = 'timesheets'">
+                                                View All
+                                                <v-icon right small>mdi-chevron-right</v-icon>
+                                            </v-btn>
+                                        </v-card-title>
+                                        <v-card-text>
+                                            <v-data-table
+                                                :headers="[
+                                                    { text: 'Week', value: 'startDate' },
+                                                    { text: 'Hours', value: 'totalHours' },
+                                                    { text: 'Status', value: 'status' }
+                                                ]"
+                                                :items="getRecentTimesheets(5)"
+                                                dense
+                                                hide-default-footer
+                                            >
+                                                <template v-slot:item.startDate="{ item }">
+                                                    {{ formatDate(item.startDate) }}
+                                                </template>
+                                                <template v-slot:item.totalHours="{ item }">
+                                                    {{ formatHours(getTimesheetTotalHours(item)) }}
+                                                </template>
+                                                <template v-slot:item.status="{ item }">
+                                                    <v-chip
+                                                        x-small
+                                                        :color="getTimesheetStatusColor(item.status)"
+                                                        :class="{'white--text': item.status === 'Rejected'}"
+                                                    >
+                                                        {{ item.status }}
+                                                    </v-chip>
+                                                </template>
+                                            </v-data-table>
+                                        </v-card-text>
+                                    </v-card>
+                                </v-col>
+                                <v-col cols="4">
+                                    <v-card>
+                                        <v-card-title>My Projects</v-card-title>
+                                        <v-card-text>
+                                            <v-list dense>
+                                                <v-list-item
+                                                    v-for="project in getActiveProjects()"
+                                                    :key="project.id"
+                                                >
+                                                    <v-list-item-content>
+                                                        <v-list-item-title>{{ project.name }}</v-list-item-title>
+                                                        <v-list-item-subtitle>{{ getClientName(project.clientId) }}</v-list-item-subtitle>
+                                                    </v-list-item-content>
+                                                </v-list-item>
+                                            </v-list>
+                                        </v-card-text>
+                                    </v-card>
+                                </v-col>
+                            </template>
+
+                            <!-- Supervisor/Manager Widgets -->
+                            <template v-if="isSupervisor || isManager">
+                                <v-col cols="8">
+                                    <v-card>
+                                        <v-card-title>
+                                            Pending Approvals
+                                            <v-spacer></v-spacer>
+                                            <v-btn small text color="primary" @click="activeTab = 'timesheets'">
+                                                View All
+                                                <v-icon right small>mdi-chevron-right</v-icon>
+                                            </v-btn>
+                                        </v-card-title>
+                                        <v-card-text>
+                                            <v-data-table
+                                                :headers="[
+                                                    { text: 'Employee', value: 'submittedBy' },
+                                                    { text: 'Submitted', value: 'submittedAt' },
+                                                    { text: 'Hours', value: 'totalHours' },
+                                                    { text: 'Status', value: 'status' },
+                                                    { text: 'Actions', value: 'actions', sortable: false }
+                                                ]"
+                                                :items="getPendingApprovals(5)"
+                                                dense
+                                                hide-default-footer
+                                            >
+                                                <template v-slot:item.submittedBy="{ item }">
+                                                    {{ getUserName(item.submittedBy) }}
+                                                </template>
+                                                <template v-slot:item.submittedAt="{ item }">
+                                                    {{ formatDateTime(item.submittedAt) }}
+                                                </template>
+                                                <template v-slot:item.totalHours="{ item }">
+                                                    {{ formatHours(getTimesheetTotalHours(item)) }}
+                                                </template>
+                                                <template v-slot:item.status="{ item }">
+                                                    <v-chip
+                                                        x-small
+                                                        :color="getTimesheetStatusColor(item.status)"
+                                                    >
+                                                        {{ item.status }}
+                                                    </v-chip>
+                                                </template>
+                                                <template v-slot:item.actions="{ item }">
+                                                    <v-btn
+                                                        x-small
+                                                        text
+                                                        color="primary"
+                                                        @click="viewTimesheetDetails(item)"
+                                                    >
+                                                        Review
+                                                    </v-btn>
+                                                </template>
+                                            </v-data-table>
+                                        </v-card-text>
+                                    </v-card>
+                                </v-col>
+                                <v-col cols="4">
+                                    <v-card class="mb-4">
+                                        <v-card-title>Approval Summary</v-card-title>
+                                        <v-card-text>
+                                            <v-list dense>
+                                                <v-list-item>
+                                                    <v-list-item-content>
+                                                        <v-list-item-title>Pending Approvals</v-list-item-title>
+                                                        <v-list-item-subtitle>{{ getPendingApprovalsCount() }} timesheets</v-list-item-subtitle>
+                                                    </v-list-item-content>
+                                                </v-list-item>
+                                                <v-list-item>
+                                                    <v-list-item-content>
+                                                        <v-list-item-title>Approved This Week</v-list-item-title>
+                                                        <v-list-item-subtitle>{{ getApprovedThisWeekCount() }} timesheets</v-list-item-subtitle>
+                                                    </v-list-item-content>
+                                                </v-list-item>
+                                            </v-list>
+                                        </v-card-text>
+                                    </v-card>
+                                </v-col>
+                            </template>
+
+                            <!-- Manager-only Widgets -->
+                            <template v-if="isManager">
+                                <v-col cols="12">
+                                    <v-card>
+                                        <v-card-title>Project Overview</v-card-title>
+                                        <v-card-text>
+                                            <v-row>
+                                                <v-col cols="3">
+                                                    <v-card outlined>
+                                                        <v-card-text class="text-center">
+                                                            <div class="text-h4">{{ getActiveProjectsCount() }}</div>
+                                                            <div class="caption">Active Projects</div>
+                                                        </v-card-text>
+                                                    </v-card>
+                                                </v-col>
+                                                <v-col cols="3">
+                                                    <v-card outlined>
+                                                        <v-card-text class="text-center">
+                                                            <div class="text-h4">{{ clients.length }}</div>
+                                                            <div class="caption">Total Clients</div>
+                                                        </v-card-text>
+                                                    </v-card>
+                                                </v-col>
+                                                <v-col cols="3">
+                                                    <v-card outlined>
+                                                        <v-card-text class="text-center">
+                                                            <div class="text-h4">${{ formatCurrency(getTotalBudget()) }}</div>
+                                                            <div class="caption">Total Budget</div>
+                                                        </v-card-text>
+                                                    </v-card>
+                                                </v-col>
+                                                <v-col cols="3">
+                                                    <v-card outlined>
+                                                        <v-card-text class="text-center">
+                                                            <div class="text-h4">{{ users.length }}</div>
+                                                            <div class="caption">Total Users</div>
+                                                        </v-card-text>
+                                                    </v-card>
+                                                </v-col>
+                                            </v-row>
+                                        </v-card-text>
+                                    </v-card>
+                                </v-col>
+                            </template>
+                        </v-row>
+                    </v-container>
+                </v-tab-item>
+
+                <!-- Timesheets Tab -->
+                <v-tab-item value="timesheets">
+                    <v-container>
+                        <!-- Debug Tools -->
+                        <div class="mb-2">
+                            <v-chip class="mr-2">Role: {{ userRole }}</v-chip>
+                            <v-btn 
+                                small 
+                                color="warning" 
+                                @click="addTestData"
+                                class="mr-2"
+                            >
+                                Add Test Project
+                            </v-btn>
+                            <v-btn-group>
+                                <v-btn 
+                                    small 
+                                    :color="userRole === 'employee' ? 'primary' : ''"
+                                    @click="userRole = 'employee'"
+                                >
+                                    Employee
+                                </v-btn>
+                                <v-btn 
+                                    small 
+                                    :color="userRole === 'supervisor' ? 'primary' : ''"
+                                    @click="userRole = 'supervisor'"
+                                >
+                                    Supervisor
+                                </v-btn>
+                                <v-btn 
+                                    small 
+                                    :color="userRole === 'manager' ? 'primary' : ''"
+                                    @click="userRole = 'manager'"
+                                >
+                                    Manager
+                                </v-btn>
+                            </v-btn-group>
+                        </div>
+
+                        <!-- Timesheet Card -->
+                        <v-card flat>
+                            <v-card-title>
+                                Timesheet
+                                <v-spacer></v-spacer>
+                                <!-- Date Range Selector -->
+                                <v-menu
+                                    v-model="dateMenu"
+                                    :close-on-content-click="false"
+                                    max-width="300px"
+                                    class="mr-4"
+                                >
+                                    <template v-slot:activator="{ on }">
+                                        <v-btn
+                                            text
+                                            v-on="on"
+                                        >
+                                            {{ formatDateRange }}
+                                            <v-icon right>mdi-calendar</v-icon>
+                                        </v-btn>
+                                    </template>
+                                    <v-date-picker
+                                        v-model="startDate"
+                                        @input="dateMenu = false"
+                                    ></v-date-picker>
+                                </v-menu>
+
+                                <!-- Project Selector -->
+                                <v-select
+                                    v-model="selectedProject"
+                                    :items="availableProjects"
+                                    item-text="name"
+                                    item-value="id"
+                                    label="Add Project"
+                                    dense
+                                    outlined
+                                    hide-details
+                                    class="max-width-200"
+                                    @change="addProjectToTimesheet"
+                                ></v-select>
+                            </v-card-title>
+
+                            <v-card-text>
+                                <!-- Save Status -->
+                                <v-chip
+                                    :color="saveStatus.color"
+                                    small
+                                    class="mb-4"
+                                >
+                                    {{ saveStatus.text }}
+                                </v-chip>
+
+                                <!-- Timesheet Table -->
+                                <v-simple-table fixed-header height="500px">
+                                    <template v-slot:default>
+                                        <thead>
+                                            <tr>
+                                                <th class="text-left" width="200">Project</th>
+                                                <th 
+                                                    v-for="date in dateRange" 
+                                                    :key="date" 
+                                                    class="text-center" 
+                                                    :class="isWeekend(date) ? 'grey lighten-4' : ''"
+                                                    width="100"
+                                                >
+                                                    <div>{{ formatDate(date) }}</div>
+                                                    <div class="caption">{{ isWeekend(date) ? 'Weekend' : '' }}</div>
+                                                </th>
+                                                <th class="text-right" width="100">Total</th>
+                                                <th width="50"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <tr v-for="entry in timesheetEntries" :key="entry.projectId">
+                                                <td>{{ getProjectName(entry.projectId) }}</td>
+                                                <td 
+                                                    v-for="date in dateRange" 
+                                                    :key="date" 
+                                                    class="text-center"
+                                                    :class="isWeekend(date) ? 'grey lighten-4' : ''"
+                                                >
+                                                    <v-row no-gutters align="center" justify="center">
+                                                        <v-col>
+                                                            <v-text-field
+                                                                v-model="entry.hours[date]"
+                                                                type="number"
+                                                                min="0"
+                                                                max="24"
+                                                                dense
+                                                                hide-details
+                                                                :disabled="isSubmitted || isWeekend(date)"
+                                                                class="time-input"
+                                                                @input="handleHoursInput($event, entry, date)"
+                                                            ></v-text-field>
+                                                        </v-col>
+                                                        <v-col cols="auto" v-if="entry.hours[date]">
+                                                            <v-icon
+                                                                small
+                                                                :color="hasNote(entry, date) ? 'primary' : 'error'"
+                                                                @click="viewNote(entry, date)"
+                                                            >
+                                                                {{ hasNote(entry, date) ? 'mdi-note-text' : 'mdi-alert' }}
+                                                            </v-icon>
+                                                        </v-col>
+                                                    </v-row>
+                                                </td>
+                                                <td class="text-right">
+                                                    <strong>{{ formatHours(getEntryTotal(entry)) }}</strong>
+                                                </td>
+                                                <td>
+                                                    <v-icon 
+                                                        small 
+                                                        color="error" 
+                                                        @click="removeFromTimesheet(entry.projectId)"
+                                                        v-if="!isSubmitted"
+                                                        title="Remove project"
+                                                    >
+                                                        mdi-delete
+                                                    </v-icon>
+                                                </td>
+                                            </tr>
+                                            <!-- Add Project Row -->
+                                            <tr v-if="!isSubmitted">
+                                                <td colspan="17" class="pa-0">
+                                                    <v-btn
+                                                        block
+                                                        text
+                                                        color="primary"
+                                                        @click="openAddProjectDialog"
+                                                        class="text-none py-3 px-4"
+                                                        style="border: 1px dashed rgba(0, 0, 0, 0.12); background: #fafafa;"
+                                                    >
+                                                        <v-icon left>mdi-plus</v-icon>
+                                                        Add Project to Timesheet
+                                                    </v-btn>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                        <tfoot>
+                                            <tr class="grey lighten-3">
+                                                <td><strong>Daily Total</strong></td>
+                                                <td 
+                                                    v-for="date in dateRange" 
+                                                    :key="date" 
+                                                    class="text-center"
+                                                >
+                                                    <strong>{{ formatHours(getDailyTotal(date)) }}</strong>
+                                                </td>
+                                                <td class="text-right">
+                                                    <strong>{{ formatHours(getGrandTotal) }}</strong>
+                                                </td>
+                                                <td></td>
+                                            </tr>
+                                        </tfoot>
+                                    </template>
+                                </v-simple-table>
+                            </v-card-text>
+
+                            <v-card-actions>
+                                <v-spacer></v-spacer>
+                                <v-btn
+                                    color="primary"
+                                    @click="submitTimesheet"
+                                    :disabled="isSubmitted || !hasEntries || !allEntriesHaveNotes"
+                                >
+                                    Submit Timesheet
+                                </v-btn>
+                            </v-card-actions>
+                        </v-card>
+
+                        <!-- Note Dialog -->
+                        <v-dialog v-model="showNoteDialog" persistent max-width="500">
                             <v-card>
                                 <v-card-title>
-                                    <span class="headline">I.R.M.A.</span>
+                                    Time Entry Note
+                                    <v-spacer></v-spacer>
+                                    <v-chip>{{ formatDate(currentNote.date) }}</v-chip>
                                 </v-card-title>
                                 <v-card-text>
-                                    <v-form>
+                                    <div class="subtitle-2 mb-2">
+                                        {{ getProjectName(currentNote.projectId) }}
+                                    </div>
+                                    <div class="caption mb-4">
+                                        Hours: {{ currentNote.hours }}
+                                    </div>
+                                    <v-textarea
+                                        v-model="currentNote.note"
+                                        label="Note (required)"
+                                        rows="3"
+                                        :rules="[v => !!v || 'Note is required']"
+                                        :disabled="isSubmitted"
+                                        auto-grow
+                                        counter
+                                    ></v-textarea>
+                                </v-card-text>
+                                <v-card-actions>
+                                    <v-spacer></v-spacer>
+                                    <v-btn text @click="closeNote">Cancel</v-btn>
+                                    <v-btn
+                                        color="primary"
+                                        @click="saveNote"
+                                        :disabled="!currentNote.note"
+                                    >
+                                        Save Note
+                                    </v-btn>
+                                </v-card-actions>
+                            </v-card>
+                        </v-dialog>
+
+                        <!-- Pending Timesheets Card -->
+                        <v-card class="mt-4">
+                            <v-card-title>
+                                Timesheets
+                                <v-spacer></v-spacer>
+                                <v-select
+                                    v-model="timesheetFilter"
+                                    :items="['All', 'Pending', 'Approved', 'Rejected']"
+                                    label="Filter Status"
+                                    dense
+                                    outlined
+                                    hide-details
+                                    class="mx-4"
+                                    style="max-width: 150px"
+                                ></v-select>
+                                <v-text-field
+                                    v-model="timesheetSearch"
+                                    append-icon="mdi-magnify"
+                                    label="Search"
+                                    single-line
+                                    hide-details
+                                    class="mx-4"
+                                    style="max-width: 300px"
+                                ></v-text-field>
+                            </v-card-title>
+                            <v-data-table 
+                                :headers="timesheetHeaders"
+                                :items="visibleTimesheets"
+                                :search="timesheetSearch"
+                                class="elevation-1"
+                            >
+                                <template v-slot:item.status="{ item }">
+                                    <v-chip
+                                        small
+                                        :color="getTimesheetStatusColor(item.status)"
+                                        :class="{'white--text': item.status === 'Rejected'}"
+                                    >
+                                        {{ item.status }}
+                                    </v-chip>
+                                </template>
+                                <template v-slot:item.submittedAt="{ item }">
+                                    {{ formatDateTime(item.submittedAt) }}
+                                </template>
+                                <template v-slot:item.supervisorApproval="{ item }">
+                                    <v-chip
+                                        small
+                                        :color="getApprovalStatusColor(item.supervisorApproval)"
+                                        :class="{'white--text': item.supervisorApproval === 'Rejected'}"
+                                    >
+                                        {{ item.supervisorApproval }}
+                                    </v-chip>
+                                </template>
+                                <template v-slot:item.managerApproval="{ item }">
+                                    <v-chip
+                                        small
+                                        :color="getApprovalStatusColor(item.managerApproval)"
+                                        :class="{'white--text': item.managerApproval === 'Rejected'}"
+                                    >
+                                        {{ item.managerApproval }}
+                                    </v-chip>
+                                </template>
+                                <template v-slot:item.actions="{ item }">
+                                    <v-btn 
+                                        small 
+                                        color="info"
+                                        class="mr-2"
+                                        @click="viewTimesheetDetails(item)"
+                                    >
+                                        <v-icon left small>mdi-eye</v-icon>
+                                        View
+                                    </v-btn>
+                                    <template v-if="item.status === 'Pending'">
+                                        <v-btn 
+                                            v-if="canApproveTimesheet(item)"
+                                            small 
+                                            color="success" 
+                                            class="mr-2"
+                                            @click="approve(item.id)"
+                                        >
+                                            <v-icon left small>mdi-check</v-icon>
+                                            Approve
+                                        </v-btn>
+                                        <v-btn 
+                                            v-if="canApproveTimesheet(item)"
+                                            small 
+                                            color="error" 
+                                            @click="showRejectDialog(item)"
+                                        >
+                                            <v-icon left small>mdi-close</v-icon>
+                                            Reject
+                                        </v-btn>
+                                    </template>
+                                </template>
+                            </v-data-table>
+                        </v-card>
+
+                        <!-- Timesheet Details Dialog -->
+                        <v-dialog v-model="showTimesheetDetails" max-width="900">
+                            <v-card v-if="selectedTimesheet">
+                                <v-card-title class="headline">
+                                    Timesheet Details
+                                    <v-spacer></v-spacer>
+                                    <v-chip
+                                        :color="getTimesheetStatusColor(selectedTimesheet.status)"
+                                        :class="{'white--text': selectedTimesheet.status === 'Rejected'}"
+                                    >
+                                        {{ selectedTimesheet.status }}
+                                    </v-chip>
+                                </v-card-title>
+                                <v-card-text>
+                                    <v-row>
+                                        <v-col cols="4">
+                                            <div class="subtitle-1 font-weight-bold">Submitted</div>
+                                            <div>{{ formatDateTime(selectedTimesheet.submittedAt) }}</div>
+                                            <div class="caption">by {{ getUserName(selectedTimesheet.submittedBy) }}</div>
+                                        </v-col>
+                                        <v-col cols="4">
+                                            <div class="subtitle-1 font-weight-bold">Supervisor Approval</div>
+                                            <v-chip
+                                                small
+                                                :color="getApprovalStatusColor(selectedTimesheet.supervisorApproval.status)"
+                                                :class="{'white--text': selectedTimesheet.supervisorApproval.status === 'Rejected'}"
+                                            >
+                                                {{ selectedTimesheet.supervisorApproval.status }}
+                                            </v-chip>
+                                            <div v-if="selectedTimesheet.supervisorApproval.by" class="mt-1">
+                                                <div class="caption">
+                                                    by {{ getUserName(selectedTimesheet.supervisorApproval.by) }}
+                                                    <br>
+                                                    on {{ formatDateTime(selectedTimesheet.supervisorApproval.date) }}
+                                                </div>
+                                                <div v-if="selectedTimesheet.supervisorApproval.comment" class="mt-1">
+                                                    <v-tooltip bottom>
+                                                        <template v-slot:activator="{ on, attrs }">
+                                                            <v-icon
+                                                                small
+                                                                color="primary"
+                                                                v-bind="attrs"
+                                                                v-on="on"
+                                                            >
+                                                                mdi-comment-text
+                                                            </v-icon>
+                                                        </template>
+                                                        <span>{{ selectedTimesheet.supervisorApproval.comment }}</span>
+                                                    </v-tooltip>
+                                                </div>
+                                            </div>
+                                        </v-col>
+                                        <v-col cols="4">
+                                            <div class="subtitle-1 font-weight-bold">Manager Approval</div>
+                                            <v-chip
+                                                small
+                                                :color="getApprovalStatusColor(selectedTimesheet.managerApproval.status)"
+                                                :class="{'white--text': selectedTimesheet.managerApproval.status === 'Rejected'}"
+                                            >
+                                                {{ selectedTimesheet.managerApproval.status }}
+                                            </v-chip>
+                                            <div v-if="selectedTimesheet.managerApproval.by" class="mt-1">
+                                                <div class="caption">
+                                                    by {{ getUserName(selectedTimesheet.managerApproval.by) }}
+                                                    <br>
+                                                    on {{ formatDateTime(selectedTimesheet.managerApproval.date) }}
+                                                </div>
+                                                <div v-if="selectedTimesheet.managerApproval.comment" class="mt-1">
+                                                    <v-tooltip bottom>
+                                                        <template v-slot:activator="{ on, attrs }">
+                                                            <v-icon
+                                                                small
+                                                                color="primary"
+                                                                v-bind="attrs"
+                                                                v-on="on"
+                                                            >
+                                                                mdi-comment-text
+                                                            </v-icon>
+                                                        </template>
+                                                        <span>{{ selectedTimesheet.managerApproval.comment }}</span>
+                                                    </v-tooltip>
+                                                </div>
+                                            </div>
+                                        </v-col>
+                                    </v-row>
+
+                                    <!-- Approval History -->
+                                    <v-divider class="my-4"></v-divider>
+                                    <div class="subtitle-1 font-weight-bold mb-2">Approval History</div>
+                                    <v-timeline dense>
+                                        <v-timeline-item
+                                            v-for="(event, index) in selectedTimesheet.approvalHistory"
+                                            :key="index"
+                                            :color="event.action === 'approved' ? 'success' : 'error'"
+                                            small
+                                        >
+                                            <div class="font-weight-normal">
+                                                <strong>{{ event.action === 'approved' ? 'Approved' : 'Rejected' }}</strong> by
+                                                {{ getUserName(event.by) }} ({{ event.role }})
+                                            </div>
+                                            <div class="caption">
+                                                {{ formatDateTime(event.date) }}
+                                            </div>
+                                            <div v-if="event.comment" class="mt-1 grey--text text--darken-1">
+                                                "{{ event.comment }}"
+                                            </div>
+                                        </v-timeline-item>
+                                    </v-timeline>
+
+                                    <v-divider class="my-4"></v-divider>
+                                    <div class="subtitle-1 font-weight-bold mb-4">Time Entries</div>
+                                    <v-simple-table>
+                                        <template v-slot:default>
+                                            <thead>
+                                                <tr>
+                                                    <th class="text-left">Project</th>
+                                                    <th class="text-left">Client</th>
+                                                    <th class="text-right">Hours</th>
+                                                    <th class="text-left">Notes</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <template v-for="entry in selectedTimesheet.entries">
+                                                    <tr 
+                                                        v-for="(hours, date) in entry.hours" 
+                                                        :key="entry.projectId + date"
+                                                        v-if="parseFloat(hours) > 0"
+                                                    >
+                                                        <td>{{ getProjectName(entry.projectId) }}</td>
+                                                        <td>{{ getClientName(getProjectClientId(entry.projectId)) }}</td>
+                                                        <td class="text-right">{{ formatHours(hours) }}</td>
+                                                        <td>
+                                                            <v-tooltip bottom>
+                                                                <template v-slot:activator="{ on, attrs }">
+                                                                    <span 
+                                                                        v-bind="attrs"
+                                                                        v-on="on"
+                                                                        class="caption"
+                                                                    >
+                                                                        {{ truncateNote(entry.notes[date]) }}
+                                                                    </span>
+                                                                </template>
+                                                                <span>{{ entry.notes[date] }}</span>
+                                                            </v-tooltip>
+                                                        </td>
+                                                    </tr>
+                                                </template>
+                                            </tbody>
+                                            <tfoot>
+                                                <tr>
+                                                    <td colspan="2" class="text-right font-weight-bold">Total Hours:</td>
+                                                    <td class="text-right font-weight-bold">
+                                                        {{ formatHours(getTimesheetTotalHours(selectedTimesheet)) }}
+                                                    </td>
+                                                    <td></td>
+                                                </tr>
+                                            </tfoot>
+                                        </template>
+                                    </v-simple-table>
+                                </v-card-text>
+                                <v-card-actions>
+                                    <v-spacer></v-spacer>
+                                    <v-btn text @click="showTimesheetDetails = false">Close</v-btn>
+                                </v-card-actions>
+                            </v-card>
+                        </v-dialog>
+
+                        <!-- Reject Dialog -->
+                        <v-dialog v-model="showRejectDialog" max-width="500">
+                            <v-card>
+                                <v-card-title>Reject Timesheet</v-card-title>
+                                <v-card-text>
+                                    <v-textarea
+                                        v-model="rejectReason"
+                                        label="Reason for Rejection"
+                                        rows="3"
+                                        :rules="[v => !!v || 'Reason is required']"
+                                        required
+                                    ></v-textarea>
+                                </v-card-text>
+                                <v-card-actions>
+                                    <v-spacer></v-spacer>
+                                    <v-btn text @click="closeRejectDialog">Cancel</v-btn>
+                                    <v-btn
+                                        color="error"
+                                        @click="rejectTimesheet"
+                                        :disabled="!rejectReason"
+                                    >
+                                        Reject
+                                    </v-btn>
+                                </v-card-actions>
+                            </v-card>
+                        </v-dialog>
+
+                        <!-- User Management Card -->
+                        <v-card class="mt-4" v-if="canManageUsers">
+                            <v-card-title>
+                                User Management
+                                <v-spacer></v-spacer>
+                                <v-btn
+                                    color="primary"
+                                    @click="openUserDialog()"
+                                >
+                                    Add User
+                                </v-btn>
+                            </v-card-title>
+                            <v-data-table
+                                :headers="userHeaders"
+                                :items="users"
+                                class="elevation-1"
+                            >
+                                <template v-slot:item.actions="{ item }">
+                                    <v-btn
+                                        small
+                                        color="primary"
+                                        class="mr-2"
+                                        @click="openUserDialog(item)"
+                                    >
+                                        Edit
+                                    </v-btn>
+                                    <v-btn
+                                        small
+                                        color="error"
+                                        @click="deleteUser(item.id)"
+                                    >
+                                        Delete
+                                    </v-btn>
+                                </template>
+                            </v-data-table>
+                        </v-card>
+
+                        <!-- User Dialog -->
+                        <v-dialog v-model="showUserDialog" persistent max-width="500">
+                            <v-card>
+                                <v-card-title>
+                                    {{ editingUser.id ? 'Edit User' : 'Add User' }}
+                                </v-card-title>
+                                <v-card-text>
+                                    <v-form ref="userForm" v-model="userFormValid">
+                                        <v-text-field
+                                            v-model="editingUser.name"
+                                            label="Name"
+                                            :rules="[v => !!v || 'Name is required']"
+                                            required
+                                        ></v-text-field>
+                                        <v-text-field
+                                            v-model="editingUser.email"
+                                            label="Email"
+                                            type="email"
+                                            :rules="[
+                                                v => !!v || 'Email is required',
+                                                v => /.+@.+\..+/.test(v) || 'Email must be valid'
+                                            ]"
+                                            required
+                                        ></v-text-field>
+                                        <v-select
+                                            v-model="editingUser.role"
+                                            :items="availableRoles"
+                                            label="Role"
+                                            :rules="[v => !!v || 'Role is required']"
+                                            required
+                                        ></v-select>
+                                        <v-text-field
+                                            v-if="!editingUser.id"
+                                            v-model="editingUser.password"
+                                            label="Password"
+                                            type="password"
+                                            :rules="[v => !!v || 'Password is required']"
+                                            required
+                                        ></v-text-field>
+                                    </v-form>
+                                </v-card-text>
+                                <v-card-actions>
+                                    <v-spacer></v-spacer>
+                                    <v-btn text @click="closeUserDialog">Cancel</v-btn>
+                                    <v-btn
+                                        color="primary"
+                                        @click="saveUser"
+                                        :disabled="!userFormValid"
+                                    >
+                                        Save
+                                    </v-btn>
+                                </v-card-actions>
+                            </v-card>
+                        </v-dialog>
+
+                        <!-- Add Project Dialog -->
+                        <v-dialog v-model="showAddProjectDialog" max-width="700">
+                            <v-card>
+                                <v-card-title class="d-flex align-center">
+                                    Add Project to Timesheet
+                                    <v-spacer></v-spacer>
+                                    <v-text-field
+                                        v-model="projectSearch"
+                                        append-icon="mdi-magnify"
+                                        label="Search projects or clients"
+                                        placeholder="Type to search..."
+                                        clearable
+                                        hide-details
+                                        class="ml-4"
+                                        style="max-width: 300px"
+                                        @input="filterProjects"
+                                    ></v-text-field>
+                                </v-card-title>
+                                <v-card-text>
+                                    <v-data-table
+                                        :headers="[
+                                            { text: 'Project Name', value: 'name', sortable: true },
+                                            { text: 'Client', value: 'clientName', sortable: true },
+                                            { text: 'Budget Remaining', value: 'budgetRemaining', sortable: false },
+                                            { text: 'Actions', value: 'actions', sortable: false }
+                                        ]"
+                                        :items="filteredProjects"
+                                        :loading="false"
+                                        :no-data-text="'No projects found'"
+                                        class="elevation-1"
+                                    >
+                                        <template v-slot:item.budgetRemaining="{ item }">
+                                            <v-chip
+                                                small
+                                                :color="getBudgetUtilizationColor(item)"
+                                                :class="{'white--text': getBudgetUtilization(item) >= 70}"
+                                            >
+                                                ${{ formatCurrency(getBudgetRemaining(item)) }}
+                                            </v-chip>
+                                        </template>
+                                        <template v-slot:item.actions="{ item }">
+                                            <v-btn
+                                                small
+                                                color="primary"
+                                                @click="selectAndAddProject(item.id)"
+                                            >
+                                                Add to Timesheet
+                                            </v-btn>
+                                        </template>
+                                    </v-data-table>
+                                </v-card-text>
+                                <v-card-actions>
+                                    <v-spacer></v-spacer>
+                                    <v-btn text @click="showAddProjectDialog = false">Close</v-btn>
+                                </v-card-actions>
+                            </v-card>
+                        </v-dialog>
+                    </v-container>
+                </v-tab-item>
+
+                <!-- Projects Tab -->
+                <v-tab-item value="projects">
+                    <v-container>
+                        <v-card>
+                            <v-card-title>
+                                Projects
+                                <v-spacer></v-spacer>
+                                <v-btn 
+                                    color="primary" 
+                                    @click="openProjectDialog()"
+                                    v-if="isManager"
+                                >
+                                    Add Project
+                                </v-btn>
+                            </v-card-title>
+                            <v-data-table
+                                :headers="projectHeaders"
+                                :items="projects"
+                                class="elevation-1"
+                            >
+                                <template v-slot:item.client="{ item }">
+                                    <v-chip
+                                        small
+                                        outlined
+                                        color="primary"
+                                        class="clickable-chip"
+                                        @click.stop="viewClientDetails(item.clientId)"
+                                    >
+                                        <v-icon small left>mdi-account</v-icon>
+                                        {{ getClientName(item.clientId) }}
+                                    </v-chip>
+                                </template>
+                                <template v-slot:item.status="{ item }">
+                                    <v-chip
+                                        :color="item.status === 'Active' ? 'success' : 'grey'"
+                                        small
+                                    >
+                                        {{ item.status }}
+                                    </v-chip>
+                                </template>
+                                <template v-slot:item.budget="{ item }">
+                                    ${{ formatCurrency(item.budget) }}
+                                </template>
+                                <template v-slot:item.budgetRemaining="{ item }">
+                                    <v-chip
+                                        small
+                                        :color="getBudgetUtilizationColor(item)"
+                                        :class="{'white--text': getBudgetUtilization(item) >= 70}"
+                                    >
+                                        ${{ formatCurrency(getBudgetRemaining(item)) }}
+                                        ({{ getBudgetUtilization(item) }}%)
+                                    </v-chip>
+                                </template>
+                                <template v-slot:item.actions="{ item }">
+                                    <v-btn
+                                        small
+                                        color="info"
+                                        class="mr-2"
+                                        @click="viewProjectDetails(item)"
+                                    >
+                                        View
+                                    </v-btn>
+                                    <v-btn
+                                        v-if="isManager"
+                                        small
+                                        color="primary"
+                                        class="mr-2"
+                                        @click="openProjectDialog(item)"
+                                    >
+                                        <v-icon left small>mdi-pencil</v-icon>
+                                        Edit
+                                    </v-btn>
+                                    <v-btn
+                                        v-if="isManager"
+                                        small
+                                        color="error"
+                                        @click="deleteProject(item.id)"
+                                    >
+                                        <v-icon left small>mdi-delete</v-icon>
+                                        Delete
+                                    </v-btn>
+                                </template>
+                            </v-data-table>
+                        </v-card>
+
+                        <!-- Project Dialog -->
+                        <v-dialog v-model="showProjectDialog" persistent max-width="500">
+                            <v-card>
+                                <v-card-title>
+                                    {{ editingProject.id ? 'Edit Project' : 'Add Project' }}
+                                </v-card-title>
+                                <v-card-text>
+                                    <v-form ref="projectForm" v-model="projectFormValid">
+                                        <v-text-field
+                                            v-model="editingProject.name"
+                                            label="Project Name"
+                                            :rules="[v => !!v || 'Project name is required']"
+                                            required
+                                        ></v-text-field>
                                         <v-row>
-                                            <v-col cols="12">
-                                                <v-text-field
-                                                    v-model="username"
-                                                    label="Username"
+                                            <v-col cols="9">
+                                                <v-select
+                                                    v-model="editingProject.clientId"
+                                                    :items="clients"
+                                                    item-text="name"
+                                                    item-value="id"
+                                                    label="Client"
+                                                    :rules="[v => !!v || 'Client is required']"
                                                     required
-                                                ></v-text-field>
+                                                ></v-select>
                                             </v-col>
-                                            <v-col cols="12">
-                                                <v-text-field
-                                                    v-model="password"
-                                                    label="Password"
-                                                    type="password"
-                                                    required
-                                                ></v-text-field>
-                                            </v-col>
-                                            <v-col cols="12">
+                                            <v-col cols="3" class="d-flex align-center">
                                                 <v-btn
-                                                    @click="login"
-                                                    block
-                                                    color="primary"
+                                                    small
+                                                    color="success"
+                                                    @click="showClientDialog = true"
                                                 >
-                                                    Login
+                                                    <v-icon left>mdi-plus</v-icon>
+                                                    New
                                                 </v-btn>
                                             </v-col>
                                         </v-row>
+                                        <v-select
+                                            v-model="editingProject.projectManagerId"
+                                            :items="users.filter(u => u.role === 'manager')"
+                                            item-text="name"
+                                            item-value="id"
+                                            label="Project Manager"
+                                            :rules="[v => !!v || 'Project Manager is required']"
+                                            required
+                                        ></v-select>
+                                        <v-text-field
+                                            v-model="editingProject.budget"
+                                            label="Budget (USD)"
+                                            prefix="$"
+                                            type="number"
+                                            :rules="[
+                                                v => !!v || 'Budget is required',
+                                                v => v > 0 || 'Budget must be greater than 0'
+                                            ]"
+                                            required
+                                        ></v-text-field>
+                                        <v-select
+                                            v-model="editingProject.status"
+                                            :items="['Active', 'Inactive', 'Completed']"
+                                            label="Status"
+                                            :rules="[v => !!v || 'Status is required']"
+                                            required
+                                        ></v-select>
+                                        <v-textarea
+                                            v-model="editingProject.description"
+                                            label="Description"
+                                            rows="3"
+                                            counter
+                                        ></v-textarea>
                                     </v-form>
                                 </v-card-text>
+                                <v-card-actions>
+                                    <v-spacer></v-spacer>
+                                    <v-btn text @click="closeProjectDialog">Cancel</v-btn>
+                                    <v-btn
+                                        color="primary"
+                                        @click="saveProject"
+                                        :disabled="!projectFormValid"
+                                    >
+                                        Save
+                                    </v-btn>
+                                </v-card-actions>
                             </v-card>
-                        </v-col>
-                    </v-row>
-                </v-container>
-            </v-main>
+                        </v-dialog>
+
+                        <!-- Quick Client Dialog -->
+                        <v-dialog v-model="showClientDialog" persistent max-width="700">
+                            <v-card>
+                                <v-card-title>Add New Client</v-card-title>
+                                <v-card-text>
+                                    <!-- Search Existing Clients -->
+                                    <v-text-field
+                                        v-model="clientSearch"
+                                        label="Search existing clients"
+                                        prepend-icon="mdi-magnify"
+                                        clearable
+                                        @input="searchClients"
+                                    ></v-text-field>
+
+                                    <!-- Existing Clients Preview -->
+                                    <div v-if="filteredClients.length > 0" class="mb-6">
+                                        <div class="subtitle-1 font-weight-bold mb-2">Existing Clients</div>
+                                        <v-alert
+                                            type="info"
+                                            text
+                                            dense
+                                            class="mb-3"
+                                        >
+                                            Please check if the client already exists before creating a new one.
+                                        </v-alert>
+                                        <v-list dense class="mb-4">
+                                            <v-list-item
+                                                v-for="client in filteredClients"
+                                                :key="client.id"
+                                                @click="selectExistingClient(client)"
+                                            >
+                                                <v-list-item-content>
+                                                    <v-list-item-title class="font-weight-medium">{{ client.name }}</v-list-item-title>
+                                                    <v-list-item-subtitle>
+                                                        Contact: {{ client.contact }} | Email: {{ client.email }}
+                                                    </v-list-item-subtitle>
+                                                    <!-- Projects Preview -->
+                                                    <div class="mt-2">
+                                                        <div class="caption grey--text mb-1" v-if="getClientProjects(client.id).length > 0">
+                                                            Associated Projects:
+                                                        </div>
+                                                        <v-chip
+                                                            v-for="project in getClientProjects(client.id)"
+                                                            :key="project.id"
+                                                            x-small
+                                                            class="mr-1 mb-1"
+                                                            :color="project.status === 'Active' ? 'success' : 'grey'"
+                                                            outlined
+                                                        >
+                                                            {{ project.name }}
+                                                        </v-chip>
+                                                        <div class="caption grey--text" v-if="getClientProjects(client.id).length === 0">
+                                                            No associated projects
+                                                        </div>
+                                                    </div>
+                                                </v-list-item-content>
+                                                <v-list-item-action>
+                                                    <v-btn
+                                                        small
+                                                        color="primary"
+                                                        @click.stop="selectExistingClient(client)"
+                                                    >
+                                                        Select
+                                                    </v-btn>
+                                                </v-list-item-action>
+                                            </v-list-item>
+                                        </v-list>
+                                    </div>
+
+                                    <v-divider class="mb-4"></v-divider>
+                                    
+                                    <!-- New Client Form -->
+                                    <div class="subtitle-1 font-weight-bold mb-2">Create New Client</div>
+                                    <v-form ref="clientForm" v-model="clientFormValid">
+                                        <v-text-field
+                                            v-model="editingClient.name"
+                                            label="Client Name"
+                                            :rules="[
+                                                v => !!v || 'Client name is required',
+                                                v => !isDuplicateClientName(v) || 'This client name already exists'
+                                            ]"
+                                            required
+                                        ></v-text-field>
+                                        <v-text-field
+                                            v-model="editingClient.contact"
+                                            label="Contact Person"
+                                            :rules="[v => !!v || 'Contact person is required']"
+                                            required
+                                        ></v-text-field>
+                                        <v-text-field
+                                            v-model="editingClient.email"
+                                            label="Email"
+                                            type="email"
+                                            :rules="[
+                                                v => !!v || 'Email is required',
+                                                v => /.+@.+\..+/.test(v) || 'Email must be valid'
+                                            ]"
+                                            required
+                                        ></v-text-field>
+                                    </v-form>
+                                </v-card-text>
+                                <v-card-actions>
+                                    <v-spacer></v-spacer>
+                                    <v-btn text @click="closeClientDialog">Cancel</v-btn>
+                                    <v-btn
+                                        color="primary"
+                                        @click="saveQuickClient"
+                                        :disabled="!clientFormValid"
+                                    >
+                                        Create New Client
+                                    </v-btn>
+                                </v-card-actions>
+                            </v-card>
+                        </v-dialog>
+
+                        <!-- Project Details Dialog -->
+                        <v-dialog v-model="showProjectDetails" max-width="700">
+                            <v-card v-if="selectedProject">
+                                <v-card-title class="headline">
+                                    {{ selectedProject.name }}
+                                    <v-spacer></v-spacer>
+                                    <v-chip
+                                        :color="selectedProject.status === 'Active' ? 'success' : 'grey'"
+                                    >
+                                        {{ selectedProject.status }}
+                                    </v-chip>
+                                </v-card-title>
+                                <v-card-text>
+                                    <v-row>
+                                        <v-col cols="6">
+                                            <div class="subtitle-1 font-weight-bold">Client</div>
+                                            <div>{{ getClientName(selectedProject.clientId) }}</div>
+                                        </v-col>
+                                        <v-col cols="6">
+                                            <div class="subtitle-1 font-weight-bold">Project Manager</div>
+                                            <div>{{ getManagerName(selectedProject.projectManagerId) }}</div>
+                                        </v-col>
+                                    </v-row>
+                                    <v-divider class="my-4"></v-divider>
+                                    <v-row>
+                                        <v-col cols="12">
+                                            <div class="subtitle-1 font-weight-bold mb-2">Budget Overview</div>
+                                            <v-row>
+                                                <v-col cols="4">
+                                                    <div class="caption">Total Budget</div>
+                                                    <div class="text-h6">${{ formatCurrency(selectedProject.budget) }}</div>
+                                                </v-col>
+                                                <v-col cols="4">
+                                                    <div class="caption">Budget Remaining</div>
+                                                    <div class="text-h6">${{ formatCurrency(getBudgetRemaining(selectedProject)) }}</div>
+                                                </v-col>
+                                                <v-col cols="4">
+                                                    <div class="caption">Budget Utilization</div>
+                                                    <v-chip :color="getBudgetUtilizationColor(selectedProject)">
+                                                        {{ getBudgetUtilization(selectedProject) }}%
+                                                    </v-chip>
+                                                </v-col>
+                                            </v-row>
+                                            <v-progress-linear
+                                                :value="getBudgetUtilization(selectedProject)"
+                                                :color="getBudgetUtilizationColor(selectedProject)"
+                                                height="20"
+                                                class="mt-4"
+                                            >
+                                                <template v-slot:default="{ value }">
+                                                    <strong>{{ Math.ceil(value) }}%</strong>
+                                                </template>
+                                            </v-progress-linear>
+                                        </v-col>
+                                    </v-row>
+                                    <v-divider class="my-4"></v-divider>
+                                    <div class="subtitle-1 font-weight-bold mb-2">Description</div>
+                                    <div>{{ selectedProject.description || 'No description provided' }}</div>
+                                </v-card-text>
+                                <v-card-actions>
+                                    <v-spacer></v-spacer>
+                                    <v-btn text @click="showProjectDetails = false">Close</v-btn>
+                                </v-card-actions>
+                            </v-card>
+                        </v-dialog>
+
+                        <!-- Client Details Dialog -->
+                        <v-dialog v-model="showClientDetails" max-width="600">
+                            <v-card v-if="selectedClient">
+                                <v-card-title class="headline">
+                                    {{ selectedClient.name }}
+                                    <v-spacer></v-spacer>
+                                    <v-chip small>
+                                        {{ getClientProjects(selectedClient.id).length }} Projects
+                                    </v-chip>
+                                </v-card-title>
+                                <v-card-text>
+                                    <v-row>
+                                        <v-col cols="6">
+                                            <div class="subtitle-1 font-weight-bold">Contact Person</div>
+                                            <div>{{ selectedClient.contact }}</div>
+                                        </v-col>
+                                        <v-col cols="6">
+                                            <div class="subtitle-1 font-weight-bold">Email</div>
+                                            <div>{{ selectedClient.email }}</div>
+                                        </v-col>
+                                    </v-row>
+                                    <v-divider class="my-4"></v-divider>
+                                    <div class="d-flex align-center mb-2">
+                                        <div class="subtitle-1 font-weight-bold">Associated Projects</div>
+                                        <v-spacer></v-spacer>
+                                        <v-btn
+                                            small
+                                            color="primary"
+                                            @click="createProjectFromClient(selectedClient)"
+                                        >
+                                            <v-icon left small>mdi-plus</v-icon>
+                                            Add Project
+                                        </v-btn>
+                                    </div>
+                                    <v-chip-group>
+                                        <v-chip
+                                            v-for="project in getClientProjects(selectedClient.id)"
+                                            :key="project.id"
+                                            :color="project.status === 'Active' ? 'success' : 'grey'"
+                                            outlined
+                                            small
+                                            @click="viewProjectDetails(project)"
+                                        >
+                                            {{ project.name }}
+                                        </v-chip>
+                                    </v-chip-group>
+                                    <div v-if="getClientProjects(selectedClient.id).length === 0" class="grey--text">
+                                        No projects associated with this client
+                                    </div>
+                                </v-card-text>
+                                <v-card-actions>
+                                    <v-spacer></v-spacer>
+                                    <v-btn text @click="showClientDetails = false">Close</v-btn>
+                                </v-card-actions>
+                            </v-card>
+                        </v-dialog>
+                    </v-container>
+                </v-tab-item>
+
+                <!-- Clients Tab -->
+                <v-tab-item value="clients">
+                    <v-container>
+                        <v-card>
+                            <v-card-title>
+                                Clients
+                                <v-spacer></v-spacer>
+                                <v-text-field
+                                    v-model="clientSearchQuery"
+                                    append-icon="mdi-magnify"
+                                    label="Search clients"
+                                    single-line
+                                    hide-details
+                                    class="mx-4"
+                                    style="max-width: 300px"
+                                ></v-text-field>
+                                <v-btn color="primary" @click="openClientDialog()">
+                                    <v-icon left>mdi-plus</v-icon>
+                                    Add Client
+                                </v-btn>
+                            </v-card-title>
+                            <v-data-table
+                                :headers="clientHeaders"
+                                :items="clients"
+                                :search="clientSearchQuery"
+                                :loading="loading"
+                                class="elevation-1"
+                            >
+                                <template v-slot:item.projects="{ item }">
+                                    <v-chip-group>
+                                        <v-chip
+                                            v-for="project in getClientProjects(item.id)"
+                                            :key="project.id"
+                                            small
+                                            :color="project.status === 'Active' ? 'success' : 'grey'"
+                                            outlined
+                                        >
+                                            {{ project.name }}
+                                        </v-chip>
+                                        <v-chip
+                                            v-if="getClientProjects(item.id).length === 0"
+                                            small
+                                            outlined
+                                            color="grey"
+                                        >
+                                            No projects
+                                        </v-chip>
+                                    </v-chip-group>
+                                </template>
+                                <template v-slot:item.totalBudget="{ item }">
+                                    <v-chip small>
+                                        ${{ formatCurrency(getClientTotalBudget(item.id)) }}
+                                    </v-chip>
+                                </template>
+                                <template v-slot:item.actions="{ item }">
+                                    <v-btn
+                                        small
+                                        color="info"
+                                        class="mr-2"
+                                        @click="viewClientDetails(item.id)"
+                                    >
+                                        <v-icon left small>mdi-eye</v-icon>
+                                        View
+                                    </v-btn>
+                                    <v-btn
+                                        small
+                                        color="primary"
+                                        class="mr-2"
+                                        @click="openClientDialog(item)"
+                                    >
+                                        <v-icon left small>mdi-pencil</v-icon>
+                                        Edit
+                                    </v-btn>
+                                    <v-btn
+                                        small
+                                        color="error"
+                                        @click="deleteClient(item.id)"
+                                    >
+                                        <v-icon left small>mdi-delete</v-icon>
+                                        Delete
+                                    </v-btn>
+                                </template>
+                            </v-data-table>
+                        </v-card>
+
+                        <!-- Client Dialog -->
+                        <v-dialog v-model="showClientDialog" persistent max-width="600">
+                            <v-card>
+                                <v-card-title>
+                                    {{ editingClient.id ? 'Edit Client' : 'Add Client' }}
+                                </v-card-title>
+                                <v-card-text>
+                                    <v-form ref="clientForm" v-model="clientFormValid">
+                                        <v-text-field
+                                            v-model="editingClient.name"
+                                            label="Client Name"
+                                            :rules="[
+                                                v => !!v || 'Client name is required',
+                                                v => !isDuplicateClientName(v) || 'This client name already exists'
+                                            ]"
+                                            required
+                                        ></v-text-field>
+                                        <v-text-field
+                                            v-model="editingClient.contact"
+                                            label="Contact Person"
+                                            :rules="[v => !!v || 'Contact person is required']"
+                                            required
+                                        ></v-text-field>
+                                        <v-text-field
+                                            v-model="editingClient.email"
+                                            label="Email"
+                                            type="email"
+                                            :rules="[
+                                                v => !!v || 'Email is required',
+                                                v => /.+@.+\..+/.test(v) || 'Email must be valid'
+                                            ]"
+                                            required
+                                        ></v-text-field>
+                                        <v-text-field
+                                            v-model="editingClient.phone"
+                                            label="Phone"
+                                            :rules="[v => !v || /^[0-9+\-() ]*$/.test(v) || 'Please enter a valid phone number']"
+                                        ></v-text-field>
+                                        <v-textarea
+                                            v-model="editingClient.notes"
+                                            label="Notes"
+                                            rows="3"
+                                            counter
+                                        ></v-textarea>
+                                    </v-form>
+                                </v-card-text>
+                                <v-card-actions>
+                                    <v-spacer></v-spacer>
+                                    <v-btn text @click="closeClientDialog">Cancel</v-btn>
+                                    <v-btn
+                                        color="primary"
+                                        @click="saveClient"
+                                        :disabled="!clientFormValid"
+                                    >
+                                        Save
+                                    </v-btn>
+                                </v-card-actions>
+                            </v-card>
+                        </v-dialog>
+                    </v-container>
+                </v-tab-item>
+            </v-tabs-items>
         </v-app>
     </div>
+
+    <!-- Load JS dependencies in correct order -->
     <script src="https://cdn.jsdelivr.net/npm/vue@2.6.14/dist/vue.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/vuetify@2.6.14/dist/vuetify.js"></script>
     <script>
-        new Vue({
-            el: '#app',
-            vuetify: new Vuetify(),
-            data: {
-                username: '',
-                password: ''
-            },
-            methods: {
-                login() {
-                    // Implement login logic here
-                }
-            }
+        // Hide loading indicator when Vue is ready
+        window.addEventListener('load', function() {
+            document.getElementById('loading').style.display = 'none';
+            console.log('Window loaded');
         });
+
+        // Initialize Vue after dependencies are loaded
+        if (typeof Vue !== 'undefined') {
+            console.log('Vue is defined, initializing app...');
+            new Vue({
+                el: '#app',
+                vuetify: new Vuetify({
+                    theme: {
+                        dark: false
+                    }
+                }),
+                data: {
+                    activeTab: null,
+                    dateMenu: false,
+                    startDate: new Date().toISOString().substr(0, 10),
+                    selectedProject: null,
+                    selectedClient: null,
+                    showClientDetails: false,
+                    timesheetEntries: [],
+                    showNoteDialog: false,
+                    currentNote: {
+                        projectId: null,
+                        date: null,
+                        hours: '',
+                        note: ''
+                    },
+                    saveTimeout: null,
+                    saveStatus: {
+                        text: 'Saved',
+                        color: 'success'
+                    },
+                    isSubmitted: false,
+                    clients: [],
+                    projects: [],
+                    timesheets: [],
+                    timesheetHeaders: [
+                        { text: 'Submitted At', value: 'submittedAt' },
+                        { text: 'Status', value: 'status' },
+                        { text: 'Supervisor Approval', value: 'supervisorApproval' },
+                        { text: 'Manager Approval', value: 'managerApproval' },
+                        { text: 'Actions', value: 'actions', sortable: false }
+                    ],
+                    userRole: 'employee',
+                    users: [],
+                    userHeaders: [
+                        { text: 'Name', value: 'name' },
+                        { text: 'Email', value: 'email' },
+                        { text: 'Role', value: 'role' },
+                        { text: 'Actions', value: 'actions', sortable: false }
+                    ],
+                    showUserDialog: false,
+                    editingUser: {
+                        id: null,
+                        name: '',
+                        email: '',
+                        role: '',
+                        password: ''
+                    },
+                    userFormValid: false,
+                    availableRoles: ['employee', 'supervisor', 'manager'],
+                    currentUser: null,
+                    projectHeaders: [
+                        { text: 'Name', value: 'name' },
+                        { text: 'Client', value: 'client', sortable: false },
+                        { text: 'Budget', value: 'budget' },
+                        { text: 'Budget Remaining', value: 'budgetRemaining', sortable: false },
+                        { text: 'Status', value: 'status' },
+                        { text: 'Actions', value: 'actions', sortable: false }
+                    ],
+                    clientHeaders: [
+                        { text: 'Name', value: 'name' },
+                        { text: 'Contact', value: 'contact' },
+                        { text: 'Email', value: 'email' },
+                        { text: 'Phone', value: 'phone' },
+                        { text: 'Projects', value: 'projects', sortable: false },
+                        { text: 'Total Budget', value: 'totalBudget', sortable: false },
+                        { text: 'Actions', value: 'actions', sortable: false }
+                    ],
+                    showProjectDialog: false,
+                    showProjectDetails: false,
+                    editingProject: {
+                        id: null,
+                        name: '',
+                        clientId: null,
+                        projectManagerId: null,
+                        status: 'Active',
+                        description: '',
+                        budget: ''
+                    },
+                    projectFormValid: false,
+                    showClientDialog: false,
+                    clientFormValid: false,
+                    editingClient: {
+                        id: null,
+                        name: '',
+                        contact: '',
+                        email: '',
+                        phone: '',
+                        notes: ''
+                    },
+                    clientSearch: '',
+                    filteredClients: [],
+                    clientSearchQuery: '',
+                    loading: false,
+                    timesheetFilter: 'All',
+                    timesheetSearch: '',
+                    showTimesheetDetails: false,
+                    selectedTimesheet: null,
+                    showRejectDialog: false,
+                    rejectingTimesheet: null,
+                    rejectReason: '',
+                    showAddProjectDialog: false,
+                    projectSearch: '',
+                    availableProjectsWithDetails: [],
+                    showApproveDialog: false,
+                    approvalComment: '',
+                    approvingTimesheet: null
+                },
+                computed: {
+                    dateRange() {
+                        const dates = [];
+                        const start = new Date(this.startDate);
+                        for (let i = 0; i < 15; i++) {
+                            const date = new Date(start);
+                            date.setDate(start.getDate() + i);
+                            dates.push(date.toISOString().substr(0, 10));
+                        }
+                        return dates;
+                    },
+                    formatDateRange() {
+                        const start = new Date(this.startDate);
+                        const end = new Date(this.startDate);
+                        end.setDate(end.getDate() + 14);
+                        return `${start.toLocaleDateString()} - ${end.toLocaleDateString()}`;
+                    },
+                    availableProjects() {
+                        return this.projects.filter(p => 
+                            !this.timesheetEntries.find(e => e.projectId === p.id) &&
+                            p.status === 'Active'
+                        );
+                    },
+                    hasEntries() {
+                        return this.timesheetEntries.some(entry => 
+                            Object.values(entry.hours).some(h => parseFloat(h) > 0)
+                        );
+                    },
+                    allEntriesHaveNotes() {
+                        return this.timesheetEntries.every(entry =>
+                            Object.entries(entry.hours).every(([date, hours]) =>
+                                !hours || (entry.notes && entry.notes[date])
+                            )
+                        );
+                    },
+                    getGrandTotal() {
+                        return this.timesheetEntries.reduce((sum, entry) => 
+                            sum + this.getEntryTotal(entry), 0
+                        );
+                    },
+                    filteredTimesheets() {
+                        let timesheets = JSON.parse(localStorage.getItem('timesheets') || '[]');
+                        if (this.timesheetFilter !== 'All') {
+                            timesheets = timesheets.filter(t => t.status === this.timesheetFilter);
+                        }
+                        return timesheets;
+                    },
+                    isEmployee() {
+                        return this.userRole === 'employee';
+                    },
+                    isSupervisor() {
+                        return this.userRole === 'supervisor';
+                    },
+                    isManager() {
+                        return this.userRole === 'manager';
+                    },
+                    canViewProjects() {
+                        return this.userRole === 'supervisor' || this.userRole === 'manager';
+                    },
+                    canManageUsers() {
+                        return this.isManager;
+                    },
+                    canManageClients() {
+                        return this.isManager;
+                    },
+                    visibleTimesheets() {
+                        if (this.isEmployee) {
+                            return this.filteredTimesheets.filter(t => t.submittedBy === this.currentUser.id);
+                        }
+                        return this.filteredTimesheets;
+                    }
+                },
+                methods: {
+                    formatDateTime(dateStr) {
+                        if (!dateStr) return '';
+                        const date = new Date(dateStr);
+                        return date.toLocaleString();
+                    },
+                    getTimesheetStatusColor(status) {
+                        switch (status) {
+                            case 'Approved': return 'success';
+                            case 'Rejected': return 'error';
+                            case 'Pending': return 'warning';
+                            default: return 'grey';
+                        }
+                    },
+                    getApprovalStatusColor(status) {
+                        switch (status) {
+                            case 'Approved': return 'success';
+                            case 'Rejected': return 'error';
+                            case 'Pending': return 'warning';
+                            default: return 'grey';
+                        }
+                    },
+                    canApproveTimesheet(timesheet) {
+                        if (this.userRole === 'supervisor') {
+                            return timesheet.supervisorApproval.status === 'Pending';
+                        }
+                        if (this.userRole === 'manager') {
+                            return timesheet.managerApproval.status === 'Pending' && 
+                                   timesheet.supervisorApproval.status === 'Approved';
+                        }
+                        return false;
+                    },
+                    viewTimesheetDetails(timesheet) {
+                        this.selectedTimesheet = timesheet;
+                        this.showTimesheetDetails = true;
+                    },
+                    addTestData() {
+                        if (this.clients.length === 0) {
+                            this.clients.push({
+                                id: Date.now(),
+                                name: 'Test Client',
+                                contact: 'John Doe',
+                                email: 'john@test.com'
+                            });
+                        }
+                        
+                        const testProjects = [
+                            {
+                                id: Date.now(),
+                                name: 'Project Alpha',
+                                clientId: this.clients[0].id,
+                                status: 'Active',
+                                budget: 10000,
+                                description: 'Test project with low budget utilization'
+                            },
+                            {
+                                id: Date.now() + 1,
+                                name: 'Project Beta',
+                                clientId: this.clients[0].id,
+                                status: 'Active',
+                                budget: 5000,
+                                description: 'Test project with medium budget utilization'
+                            },
+                            {
+                                id: Date.now() + 2,
+                                name: 'Project Gamma',
+                                clientId: this.clients[0].id,
+                                status: 'Active',
+                                budget: 2000,
+                                description: 'Test project with high budget utilization'
+                            }
+                        ];
+                        
+                        // Add some test timesheet entries to simulate budget usage
+                        const testTimesheet = {
+                            id: Date.now(),
+                            entries: [
+                                {
+                                    projectId: testProjects[0].id,
+                                    hours: { [new Date().toISOString().substr(0, 10)]: 10 }  // $1000 spent (10%)
+                                },
+                                {
+                                    projectId: testProjects[1].id,
+                                    hours: { [new Date().toISOString().substr(0, 10)]: 35 }  // $3500 spent (70%)
+                                },
+                                {
+                                    projectId: testProjects[2].id,
+                                    hours: { [new Date().toISOString().substr(0, 10)]: 18 }  // $1800 spent (90%)
+                                }
+                            ],
+                            status: 'Approved',
+                            submittedAt: new Date().toISOString(),
+                            supervisorApproval: 'Approved',
+                            managerApproval: 'Approved'
+                        };
+                        
+                        this.projects.push(...testProjects);
+                        
+                        let existingTimesheets = JSON.parse(localStorage.getItem('timesheets') || '[]');
+                        existingTimesheets.push(testTimesheet);
+                        
+                        localStorage.setItem('clients', JSON.stringify(this.clients));
+                        localStorage.setItem('projects', JSON.stringify(this.projects));
+                        localStorage.setItem('timesheets', JSON.stringify(existingTimesheets));
+                        
+                        alert('Test data added! Three projects with different budget utilization levels have been created.');
+                    },
+                    formatDate(dateStr) {
+                        const date = new Date(dateStr);
+                        return date.toLocaleDateString('en-US', {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric'
+                        });
+                    },
+                    formatHours(hours) {
+                        return parseFloat(hours || 0).toFixed(1);
+                    },
+                    isWeekend(dateStr) {
+                        const date = new Date(dateStr);
+                        return date.getDay() === 0 || date.getDay() === 6;
+                    },
+                    getProjectName(projectId) {
+                        const project = this.projects.find(p => p.id === projectId);
+                        return project ? project.name : '';
+                    },
+                    addProjectToTimesheet() {
+                        if (this.selectedProject) {
+                            // Check if project already exists in timesheet
+                            if (!this.timesheetEntries.find(e => e.projectId === this.selectedProject)) {
+                                const newEntry = {
+                                    projectId: this.selectedProject,
+                                    hours: {},
+                                    notes: {}  // Initialize notes object
+                                };
+                                this.timesheetEntries.push(newEntry);
+                                this.selectedProject = null;
+                                this.showAddProjectDialog = false;
+                                this.saveTimesheet();
+                            }
+                        }
+                    },
+                    removeFromTimesheet(projectId) {
+                        this.timesheetEntries = this.timesheetEntries.filter(
+                            entry => entry.projectId !== projectId
+                        );
+                        this.saveTimesheet();
+                    },
+                    handleHoursInput(value, entry, date) {
+                        // Convert value to a number and handle empty/invalid input
+                        let hours = value === '' ? '' : parseFloat(value);
+                        
+                        // Handle invalid input
+                        if (isNaN(hours)) {
+                            entry.hours[date] = '';
+                            return;
+                        }
+                        
+                        // Enforce limits
+                        if (hours < 0) hours = 0;
+                        if (hours > 24) hours = 24;
+                        
+                        // Update the entry
+                        entry.hours[date] = hours.toString();
+                        
+                        // If there are hours entered but no note, show the note dialog
+                        if (hours > 0 && (!entry.notes || !entry.notes[date])) {
+                            this.viewNote(entry, date);
+                        }
+                        
+                        // Save the timesheet
+                        this.saveTimesheet();
+                    },
+                    getEntryTotal(entry) {
+                        return Object.values(entry.hours).reduce(
+                            (sum, hours) => sum + parseFloat(hours || 0), 0
+                        );
+                    },
+                    getDailyTotal(date) {
+                        return this.timesheetEntries.reduce(
+                            (sum, entry) => sum + parseFloat(entry.hours[date] || 0), 0
+                        );
+                    },
+                    hasNote(entry, date) {
+                        return entry.notes && entry.notes[date];
+                    },
+                    viewNote(entry, date) {
+                        // Initialize notes object if it doesn't exist
+                        if (!entry.notes) {
+                            entry.notes = {};
+                        }
+                        
+                        this.currentNote = {
+                            projectId: entry.projectId,
+                            date: date,
+                            hours: entry.hours[date],
+                            note: entry.notes[date] || ''
+                        };
+                        this.showNoteDialog = true;
+                    },
+                    closeNote() {
+                        this.showNoteDialog = false;
+                        this.currentNote = {
+                            projectId: null,
+                            date: null,
+                            hours: '',
+                            note: ''
+                        };
+                    },
+                    saveNote() {
+                        const entry = this.timesheetEntries.find(
+                            e => e.projectId === this.currentNote.projectId
+                        );
+                        if (entry) {
+                            if (!entry.notes) entry.notes = {};
+                            entry.notes[this.currentNote.date] = this.currentNote.note;
+                            this.saveTimesheet();
+                        }
+                        this.closeNote();
+                    },
+                    saveTimesheet() {
+                        this.saveStatus = { text: 'Saving...', color: 'warning' };
+                        clearTimeout(this.saveTimeout);
+                        
+                        // Ensure all entries have a notes object
+                        this.timesheetEntries.forEach(entry => {
+                            if (!entry.notes) {
+                                entry.notes = {};
+                            }
+                        });
+                        
+                        this.saveTimeout = setTimeout(() => {
+                            try {
+                                const timesheetData = {
+                                    entries: this.timesheetEntries,
+                                    startDate: this.startDate,
+                                    isSubmitted: this.isSubmitted
+                                };
+                                localStorage.setItem('timesheet', JSON.stringify(timesheetData));
+                                this.saveStatus = { text: 'Saved', color: 'success' };
+                                console.log('Timesheet saved:', timesheetData);
+                            } catch (error) {
+                                this.saveStatus = { text: 'Error Saving', color: 'error' };
+                                console.error('Error saving timesheet:', error);
+                            }
+                        }, 500);
+                    },
+                    submitTimesheet() {
+                        // Basic validation
+                        if (!this.timesheetEntries.length) {
+                            alert('Please add at least one time entry before submitting.');
+                            return;
+                        }
+
+                        // Check if there are any hours entered
+                        const hasHours = this.timesheetEntries.some(entry => 
+                            Object.values(entry.hours).some(h => parseFloat(h) > 0)
+                        );
+                        if (!hasHours) {
+                            alert('Please enter hours for at least one day before submitting.');
+                            return;
+                        }
+
+                        // Check if all entries with hours have notes
+                        const allHaveNotes = this.timesheetEntries.every(entry =>
+                            Object.entries(entry.hours).every(([date, hours]) =>
+                                !parseFloat(hours) || (entry.notes && entry.notes[date])
+                            )
+                        );
+                        if (!allHaveNotes) {
+                            alert('Please add notes for all time entries before submitting.');
+                            return;
+                        }
+
+                        if (confirm('Are you sure you want to submit this timesheet?')) {
+                            try {
+                                // Create the timesheet data structure
+                                const timesheetData = {
+                                    id: Date.now(),
+                                    entries: JSON.parse(JSON.stringify(this.timesheetEntries)),
+                                    startDate: this.startDate,
+                                    status: 'Pending',
+                                    submittedAt: new Date().toISOString(),
+                                    submittedBy: this.currentUser?.id || Date.now(),
+                                    supervisorApproval: {
+                                        status: 'Pending',
+                                        date: null,
+                                        by: null,
+                                        comment: null
+                                    },
+                                    managerApproval: {
+                                        status: 'Pending',
+                                        date: null,
+                                        by: null,
+                                        comment: null
+                                    },
+                                    approvalHistory: []
+                                };
+
+                                // Get existing timesheets
+                                let timesheets = [];
+                                try {
+                                    const existingTimesheets = localStorage.getItem('timesheets');
+                                    timesheets = existingTimesheets ? JSON.parse(existingTimesheets) : [];
+                                    if (!Array.isArray(timesheets)) timesheets = [];
+                                } catch (error) {
+                                    console.error('Error loading existing timesheets:', error);
+                                    timesheets = [];
+                                }
+
+                                // Add new timesheet
+                                timesheets.push(timesheetData);
+                                
+                                // Save to localStorage
+                                localStorage.setItem('timesheets', JSON.stringify(timesheets));
+
+                                // Clear current timesheet
+                                this.timesheetEntries = [];
+                                this.isSubmitted = false;
+                                localStorage.removeItem('timesheet');
+
+                                // Update the UI
+                                this.loadPendingTimesheets();
+
+                                alert('Timesheet submitted successfully!');
+                            } catch (error) {
+                                console.error('Error submitting timesheet:', error);
+                                alert('Error submitting timesheet. Please try again.');
+                            }
+                        }
+                    },
+                    getProjectClientId(projectId) {
+                        const project = this.projects.find(p => p.id === projectId);
+                        return project ? project.clientId : null;
+                    },
+                    truncateNote(note) {
+                        if (!note) return '';
+                        return note.length > 50 ? note.substring(0, 47) + '...' : note;
+                    },
+                    getTimesheetTotalHours(timesheet) {
+                        if (!timesheet || !timesheet.entries) return 0;
+                        return timesheet.entries.reduce((total, entry) => {
+                            return total + Object.values(entry.hours).reduce((sum, hours) => 
+                                sum + parseFloat(hours || 0), 0);
+                        }, 0);
+                    },
+                    approve(id, comment = '') {
+                        let timesheets = JSON.parse(localStorage.getItem('timesheets') || '[]');
+                        timesheets = timesheets.map(ts => {
+                            if (ts.id === id) {
+                                const approvalData = {
+                                    date: new Date().toISOString(),
+                                    by: this.currentUser.id,
+                                    role: this.userRole,
+                                    action: 'approved',
+                                    comment: comment
+                                };
+
+                                if (this.userRole === 'supervisor') {
+                                    ts.supervisorApproval = {
+                                        status: 'Approved',
+                                        date: approvalData.date,
+                                        by: approvalData.by,
+                                        comment: comment
+                                    };
+                                } else if (this.userRole === 'manager' && ts.supervisorApproval.status === 'Approved') {
+                                    ts.managerApproval = {
+                                        status: 'Approved',
+                                        date: approvalData.date,
+                                        by: approvalData.by,
+                                        comment: comment
+                                    };
+                                }
+
+                                ts.approvalHistory.push(approvalData);
+
+                                if (ts.supervisorApproval.status === 'Approved' && ts.managerApproval.status === 'Approved') {
+                                    ts.status = 'Approved';
+                                    // Simulate email notification
+                                    this.sendApprovalNotification(ts, 'approved');
+                                }
+                            }
+                            return ts;
+                        });
+                        localStorage.setItem('timesheets', JSON.stringify(timesheets));
+                        this.loadPendingTimesheets();
+                    },
+                    reject(id, reason) {
+                        let timesheets = JSON.parse(localStorage.getItem('timesheets') || '[]');
+                        timesheets = timesheets.map(ts => {
+                            if (ts.id === id) {
+                                const rejectionData = {
+                                    date: new Date().toISOString(),
+                                    by: this.currentUser.id,
+                                    role: this.userRole,
+                                    action: 'rejected',
+                                    comment: reason
+                                };
+
+                                if (this.userRole === 'supervisor') {
+                                    ts.supervisorApproval = {
+                                        status: 'Rejected',
+                                        date: rejectionData.date,
+                                        by: rejectionData.by,
+                                        comment: reason
+                                    };
+                                    ts.status = 'Rejected';
+                                } else if (this.userRole === 'manager') {
+                                    ts.managerApproval = {
+                                        status: 'Rejected',
+                                        date: rejectionData.date,
+                                        by: rejectionData.by,
+                                        comment: reason
+                                    };
+                                    ts.status = 'Rejected';
+                                }
+
+                                ts.approvalHistory.push(rejectionData);
+                                // Simulate email notification
+                                this.sendApprovalNotification(ts, 'rejected');
+                            }
+                            return ts;
+                        });
+                        localStorage.setItem('timesheets', JSON.stringify(timesheets));
+                        this.loadPendingTimesheets();
+                    },
+                    sendApprovalNotification(timesheet, action) {
+                        const employee = this.users.find(u => u.id === timesheet.submittedBy);
+                        const approver = this.users.find(u => u.id === this.currentUser.id);
+                        
+                        console.log('Email Notification:', {
+                            to: employee?.email,
+                            subject: `Timesheet ${action.toUpperCase()}`,
+                            message: `Your timesheet for period ${this.formatDate(timesheet.startDate)} has been ${action} by ${approver?.name} (${this.userRole}).${
+                                action === 'rejected' ? `\nReason: ${
+                                    this.userRole === 'supervisor' ? 
+                                    timesheet.supervisorApproval.comment : 
+                                    timesheet.managerApproval.comment
+                                }` : ''
+                            }`
+                        });
+                    },
+                    loadPendingTimesheets() {
+                        const allTimesheets = JSON.parse(localStorage.getItem('timesheets') || '[]');
+                        this.timesheets = allTimesheets.filter(ts => ts.status === 'Pending');
+                    },
+                    openUserDialog(user = null) {
+                        if (user) {
+                            this.editingUser = { ...user };
+                        } else {
+                            this.editingUser = {
+                                id: null,
+                                name: '',
+                                email: '',
+                                role: '',
+                                password: ''
+                            };
+                        }
+                        this.showUserDialog = true;
+                    },
+                    closeUserDialog() {
+                        this.showUserDialog = false;
+                        this.$refs.userForm.reset();
+                    },
+                    saveUser() {
+                        if (this.$refs.userForm.validate()) {
+                            const users = JSON.parse(localStorage.getItem('users') || '[]');
+                            
+                            if (this.editingUser.id) {
+                                // Update existing user
+                                const index = users.findIndex(u => u.id === this.editingUser.id);
+                                if (index !== -1) {
+                                    const { password, ...userData } = this.editingUser;
+                                    users[index] = userData;
+                                }
+                            } else {
+                                // Add new user
+                                users.push({
+                                    ...this.editingUser,
+                                    id: Date.now()
+                                });
+                            }
+                            
+                            localStorage.setItem('users', JSON.stringify(users));
+                            this.loadUsers();
+                            this.closeUserDialog();
+                            alert('User saved successfully!');
+                        }
+                    },
+                    deleteUser(userId) {
+                        if (confirm('Are you sure you want to delete this user?')) {
+                            let users = JSON.parse(localStorage.getItem('users') || '[]');
+                            users = users.filter(u => u.id !== userId);
+                            localStorage.setItem('users', JSON.stringify(users));
+                            this.loadUsers();
+                            alert('User deleted successfully!');
+                        }
+                    },
+                    loadUsers() {
+                        this.users = JSON.parse(localStorage.getItem('users') || '[]');
+                    },
+                    loginUser(email, password) {
+                        const users = JSON.parse(localStorage.getItem('users') || '[]');
+                        const user = users.find(u => u.email === email && u.password === password);
+                        if (user) {
+                            this.currentUser = user;
+                            this.userRole = user.role;
+                            return true;
+                        }
+                        return false;
+                    },
+                    openProjectDialog(project = null) {
+                        if (project) {
+                            this.editingProject = { ...project };
+                        } else {
+                            this.editingProject = {
+                                id: null,
+                                name: '',
+                                clientId: null,
+                                projectManagerId: null,
+                                status: 'Active',
+                                description: '',
+                                budget: ''
+                            };
+                        }
+                        this.showProjectDialog = true;
+                    },
+                    closeProjectDialog() {
+                        this.showProjectDialog = false;
+                        this.$refs.projectForm.reset();
+                    },
+                    saveProject() {
+                        if (this.$refs.projectForm.validate()) {
+                            const projects = JSON.parse(localStorage.getItem('projects') || '[]');
+                            
+                            if (this.editingProject.id) {
+                                // Update existing project
+                                const index = projects.findIndex(p => p.id === this.editingProject.id);
+                                if (index !== -1) {
+                                    projects[index] = this.editingProject;
+                                }
+                            } else {
+                                // Add new project
+                                projects.push({
+                                    ...this.editingProject,
+                                    id: Date.now()
+                                });
+                            }
+                            
+                            localStorage.setItem('projects', JSON.stringify(projects));
+                            this.projects = projects;
+                            this.closeProjectDialog();
+                            alert('Project saved successfully!');
+                        }
+                    },
+                    deleteProject(projectId) {
+                        if (confirm('Are you sure you want to delete this project? This will affect any timesheets using this project.')) {
+                            let projects = JSON.parse(localStorage.getItem('projects') || '[]');
+                            projects = projects.filter(p => p.id !== projectId);
+                            localStorage.setItem('projects', JSON.stringify(projects));
+                            this.projects = projects;
+                            alert('Project deleted successfully!');
+                        }
+                    },
+                    getClientName(clientId) {
+                        const client = this.clients.find(c => c.id === clientId);
+                        return client ? client.name : 'Unknown Client';
+                    },
+                    formatCurrency(value) {
+                        return parseFloat(value).toLocaleString('en-US', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2
+                        });
+                    },
+                    getBudgetRemaining(project) {
+                        // Calculate total hours spent on project
+                        const allTimesheets = JSON.parse(localStorage.getItem('timesheets') || '[]');
+                        let totalHours = 0;
+                        allTimesheets.forEach(timesheet => {
+                            timesheet.entries.forEach(entry => {
+                                if (entry.projectId === project.id) {
+                                    Object.values(entry.hours).forEach(hours => {
+                                        totalHours += parseFloat(hours || 0);
+                                    });
+                                }
+                            });
+                        });
+                        // Assuming $100 per hour rate
+                        const budgetSpent = totalHours * 100;
+                        return Math.max(0, project.budget - budgetSpent);
+                    },
+                    getBudgetUtilization(project) {
+                        const remaining = this.getBudgetRemaining(project);
+                        return Math.min(100, Math.round((1 - remaining / project.budget) * 100));
+                    },
+                    getBudgetUtilizationColor(project) {
+                        const utilization = this.getBudgetUtilization(project);
+                        if (utilization >= 90) return 'error';
+                        if (utilization >= 70) return 'warning';
+                        return 'success';
+                    },
+                    viewProjectDetails(project) {
+                        this.selectedProject = project;
+                        this.showProjectDetails = true;
+                    },
+                    getManagerName(managerId) {
+                        const manager = this.users.find(u => u.id === managerId);
+                        return manager ? manager.name : 'Unknown Manager';
+                    },
+                    closeClientDialog() {
+                        this.showClientDialog = false;
+                        this.$refs.clientForm.reset();
+                        this.editingClient = {
+                            id: null,
+                            name: '',
+                            contact: '',
+                            email: '',
+                            phone: '',
+                            notes: ''
+                        };
+                        this.clientSearch = '';
+                        this.filteredClients = [];
+                    },
+                    saveQuickClient() {
+                        if (this.$refs.clientForm.validate()) {
+                            const clients = JSON.parse(localStorage.getItem('clients') || '[]');
+                            const newClient = {
+                                ...this.editingClient,
+                                id: Date.now()
+                            };
+                            
+                            clients.push(newClient);
+                            localStorage.setItem('clients', JSON.stringify(clients));
+                            this.clients = clients;
+                            
+                            // Automatically select the new client in the project form
+                            this.editingProject.clientId = newClient.id;
+                            
+                            this.closeClientDialog();
+                            alert('Client added successfully!');
+                        }
+                    },
+                    searchClients() {
+                        if (!this.clientSearch) {
+                            this.filteredClients = [];
+                            return;
+                        }
+                        const search = this.clientSearch.toLowerCase();
+                        this.filteredClients = this.clients.filter(client => 
+                            client.name.toLowerCase().includes(search) ||
+                            client.contact.toLowerCase().includes(search) ||
+                            client.email.toLowerCase().includes(search)
+                        );
+                    },
+                    selectExistingClient(client) {
+                        this.editingProject.clientId = client.id;
+                        this.closeClientDialog();
+                    },
+                    isDuplicateClientName(name) {
+                        if (!name || !this.editingClient.id) return false;
+                        return this.clients.some(c => 
+                            c.id !== this.editingClient.id && 
+                            c.name.toLowerCase() === name.toLowerCase()
+                        );
+                    },
+                    getClientProjects(clientId) {
+                        return this.projects.filter(p => p.clientId === clientId);
+                    },
+                    viewClientDetails(clientId) {
+                        this.selectedClient = this.clients.find(c => c.id === clientId);
+                        this.showClientDetails = true;
+                    },
+                    getClientTotalBudget(clientId) {
+                        return this.projects
+                            .filter(p => p.clientId === clientId)
+                            .reduce((sum, project) => sum + parseFloat(project.budget || 0), 0);
+                    },
+                    openClientDialog(client = null) {
+                        if (client) {
+                            this.editingClient = { ...client };
+                        } else {
+                            this.editingClient = {
+                                id: null,
+                                name: '',
+                                contact: '',
+                                email: '',
+                                phone: '',
+                                notes: ''
+                            };
+                        }
+                        this.showClientDialog = true;
+                    },
+                    saveClient() {
+                        if (this.$refs.clientForm.validate()) {
+                            const clients = JSON.parse(localStorage.getItem('clients') || '[]');
+                            
+                            if (this.editingClient.id) {
+                                // Update existing client
+                                const index = clients.findIndex(c => c.id === this.editingClient.id);
+                                if (index !== -1) {
+                                    clients[index] = this.editingClient;
+                                }
+                            } else {
+                                // Add new client
+                                clients.push({
+                                    ...this.editingClient,
+                                    id: Date.now()
+                                });
+                            }
+                            
+                            localStorage.setItem('clients', JSON.stringify(clients));
+                            this.clients = clients;
+                            this.closeClientDialog();
+                            alert('Client saved successfully!');
+                        }
+                    },
+                    deleteClient(clientId) {
+                        const associatedProjects = this.getClientProjects(clientId);
+                        if (associatedProjects.length > 0) {
+                            if (!confirm(`This client has ${associatedProjects.length} associated project(s). Deleting this client will also delete all associated projects. Are you sure you want to continue?`)) {
+                                return;
+                            }
+                            // Delete associated projects
+                            let projects = JSON.parse(localStorage.getItem('projects') || '[]');
+                            projects = projects.filter(p => p.clientId !== clientId);
+                            localStorage.setItem('projects', JSON.stringify(projects));
+                            this.projects = projects;
+                        } else {
+                            if (!confirm('Are you sure you want to delete this client?')) {
+                                return;
+                            }
+                        }
+                        
+                        let clients = JSON.parse(localStorage.getItem('clients') || '[]');
+                        clients = clients.filter(c => c.id !== clientId);
+                        localStorage.setItem('clients', JSON.stringify(clients));
+                        this.clients = clients;
+                        alert('Client deleted successfully!');
+                    },
+                    createProjectFromClient(client) {
+                        this.editingProject = {
+                            id: null,
+                            name: '',
+                            clientId: client.id,
+                            projectManagerId: null,
+                            status: 'Active',
+                            description: '',
+                            budget: ''
+                        };
+                        this.showProjectDialog = true;
+                    },
+                    showRejectDialog(timesheet) {
+                        this.rejectingTimesheet = timesheet;
+                        this.rejectReason = '';
+                        this.showRejectDialog = true;
+                    },
+                    closeRejectDialog() {
+                        this.showRejectDialog = false;
+                        this.rejectingTimesheet = null;
+                        this.rejectReason = '';
+                    },
+                    rejectTimesheet() {
+                        if (this.rejectingTimesheet && this.rejectReason) {
+                            this.reject(this.rejectingTimesheet.id, this.rejectReason);
+                            this.closeRejectDialog();
+                        }
+                    },
+                    openAddProjectDialog() {
+                        this.selectedProject = null;
+                        this.projectSearch = '';
+                        this.filterProjects(); // Initialize filtered projects
+                        this.showAddProjectDialog = true;
+                    },
+                    selectAndAddProject(projectId) {
+                        this.selectedProject = projectId;
+                        this.addProjectToTimesheet();
+                    },
+                    closeAddProjectDialog() {
+                        this.showAddProjectDialog = false;
+                        this.selectedProject = null;
+                        this.projectSearch = '';
+                    },
+                    filterProjects() {
+                        const searchTerm = this.projectSearch.toLowerCase().trim();
+                        const availableProjects = this.projects
+                            .filter(p => 
+                                !this.timesheetEntries.find(e => e.projectId === p.id) &&
+                                p.status === 'Active'
+                            )
+                            .map(p => ({
+                                ...p,
+                                clientName: this.getClientName(p.clientId)
+                            }));
+
+                        if (!searchTerm) {
+                            this.filteredProjects = availableProjects;
+                            return;
+                        }
+
+                        this.filteredProjects = availableProjects.filter(p => 
+                            p.name.toLowerCase().includes(searchTerm) ||
+                            p.clientName.toLowerCase().includes(searchTerm)
+                        );
+                    },
+                    getUserName(userId) {
+                        const user = this.users.find(u => u.id === userId);
+                        return user ? user.name : 'Unknown User';
+                    },
+                    showApproveDialog(timesheet) {
+                        this.approvingTimesheet = timesheet;
+                        this.approvalComment = '';
+                        this.showApproveDialog = true;
+                    },
+                    closeApproveDialog() {
+                        this.showApproveDialog = false;
+                        this.approvingTimesheet = null;
+                        this.approvalComment = '';
+                    },
+                    confirmApproval() {
+                        if (this.approvingTimesheet) {
+                            this.approve(this.approvingTimesheet.id, this.approvalComment);
+                            this.closeApproveDialog();
+                        }
+                    },
+                    confirmRejection() {
+                        if (this.rejectingTimesheet && this.rejectReason) {
+                            this.reject(this.rejectingTimesheet.id, this.rejectReason);
+                            this.closeRejectDialog();
+                        }
+                    },
+                    getRecentTimesheets(limit = 5) {
+                        const allTimesheets = JSON.parse(localStorage.getItem('timesheets') || '[]');
+                        return allTimesheets
+                            .filter(t => t.submittedBy === this.currentUser?.id)
+                            .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt))
+                            .slice(0, limit);
+                    },
+                    getActiveProjects() {
+                        return this.projects.filter(p => p.status === 'Active');
+                    },
+                    getPendingApprovals(limit = 5) {
+                        const allTimesheets = JSON.parse(localStorage.getItem('timesheets') || '[]');
+                        return allTimesheets
+                            .filter(t => t.status === 'Pending')
+                            .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt))
+                            .slice(0, limit);
+                    },
+                    getPendingApprovalsCount() {
+                        const allTimesheets = JSON.parse(localStorage.getItem('timesheets') || '[]');
+                        return allTimesheets.filter(t => t.status === 'Pending').length;
+                    },
+                    getApprovedThisWeekCount() {
+                        const allTimesheets = JSON.parse(localStorage.getItem('timesheets') || '[]');
+                        const weekStart = new Date();
+                        weekStart.setHours(0, 0, 0, 0);
+                        weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+                        
+                        return allTimesheets.filter(t => 
+                            t.status === 'Approved' && 
+                            new Date(t.submittedAt) >= weekStart
+                        ).length;
+                    },
+                    getActiveProjectsCount() {
+                        return this.projects.filter(p => p.status === 'Active').length;
+                    },
+                    getTotalBudget() {
+                        return this.projects.reduce((sum, project) => sum + parseFloat(project.budget || 0), 0);
+                    }
+                },
+                created() {
+                    console.log('Vue instance created');
+                    // Force manager role and set active tab
+                    this.userRole = 'manager';
+                    this.activeTab = 'home';
+                    
+                    // Load saved timesheet data first
+                    try {
+                        const savedTimesheet = JSON.parse(localStorage.getItem('timesheet') || '{}');
+                        this.timesheetEntries = Array.isArray(savedTimesheet.entries) ? savedTimesheet.entries : [];
+                        this.startDate = savedTimesheet.startDate || new Date().toISOString().substr(0, 10);
+                        this.isSubmitted = savedTimesheet.isSubmitted || false;
+                        
+                        // Ensure all entries have a notes object
+                        this.timesheetEntries.forEach(entry => {
+                            if (!entry.notes) {
+                                entry.notes = {};
+                            }
+                        });
+                        
+                        console.log('Loaded timesheet data:', this.timesheetEntries);
+                    } catch (error) {
+                        console.error('Error loading timesheet:', error);
+                        this.timesheetEntries = [];
+                        this.startDate = new Date().toISOString().substr(0, 10);
+                        this.isSubmitted = false;
+                    }
+                    
+                    // Initialize with test data if storage is empty
+                    if (!localStorage.getItem('clients') || !localStorage.getItem('projects') || !localStorage.getItem('users')) {
+                        // Add test client
+                        const testClient = {
+                            id: Date.now(),
+                            name: 'Test Client',
+                            contact: 'John Doe',
+                            email: 'john@test.com',
+                            phone: '555-0123'
+                        };
+                        this.clients = [testClient];
+                        localStorage.setItem('clients', JSON.stringify(this.clients));
+
+                        // Add test user for each role
+                        const testUsers = [
+                            {
+                                id: Date.now() + 1,
+                                name: 'Employee User',
+                                email: 'employee@test.com',
+                                role: 'employee'
+                            },
+                            {
+                                id: Date.now() + 2,
+                                name: 'Supervisor User',
+                                email: 'supervisor@test.com',
+                                role: 'supervisor'
+                            },
+                            {
+                                id: Date.now() + 3,
+                                name: 'Manager User',
+                                email: 'manager@test.com',
+                                role: 'manager'
+                            }
+                        ];
+                        this.users = testUsers;
+                        localStorage.setItem('users', JSON.stringify(this.users));
+
+                        // Add test projects
+                        const testProjects = [
+                            {
+                                id: Date.now() + 4,
+                                name: 'Project Alpha',
+                                clientId: testClient.id,
+                                projectManagerId: testUsers[2].id,
+                                status: 'Active',
+                                budget: 10000,
+                                description: 'Test project with low budget utilization'
+                            },
+                            {
+                                id: Date.now() + 5,
+                                name: 'Project Beta',
+                                clientId: testClient.id,
+                                projectManagerId: testUsers[2].id,
+                                status: 'Active',
+                                budget: 5000,
+                                description: 'Test project with medium budget utilization'
+                            }
+                        ];
+                        this.projects = testProjects;
+                        localStorage.setItem('projects', JSON.stringify(this.projects));
+
+                        // Add test timesheet
+                        const testTimesheet = {
+                            id: Date.now() + 6,
+                            entries: [
+                                {
+                                    projectId: testProjects[0].id,
+                                    hours: { [new Date().toISOString().substr(0, 10)]: 8 },
+                                    notes: { [new Date().toISOString().substr(0, 10)]: 'Initial development work' }
+                                }
+                            ],
+                            status: 'Pending',
+                            submittedAt: new Date().toISOString(),
+                            supervisorApproval: 'Pending',
+                            managerApproval: 'Pending'
+                        };
+                        const timesheets = [testTimesheet];
+                        localStorage.setItem('timesheets', JSON.stringify(timesheets));
+                    }
+
+                    // Initialize current user if not set
+                    if (!this.currentUser) {
+                        this.currentUser = {
+                            id: Date.now(),
+                            role: this.userRole
+                        };
+                    }
+                    
+                    this.clients = JSON.parse(localStorage.getItem('clients') || '[]');
+                    this.projects = JSON.parse(localStorage.getItem('projects') || '[]');
+                    this.users = JSON.parse(localStorage.getItem('users') || '[]');
+                    this.loadPendingTimesheets();
+
+                    // Set initial role to manager for testing
+                    this.userRole = 'manager';
+                    this.currentUser = {
+                        id: this.users.find(u => u.role === 'manager')?.id || null,
+                        role: 'manager'
+                    };
+
+                    console.log('Initialization complete', {
+                        userRole: this.userRole,
+                        currentUser: this.currentUser,
+                        clients: this.clients,
+                        projects: this.projects,
+                        users: this.users,
+                        timesheets: JSON.parse(localStorage.getItem('timesheets') || '[]')
+                    });
+                }
+            }).$mount('#app');
+        } else {
+            console.error('Vue is not loaded properly');
+            alert('Error: Required dependencies not loaded. Please check your internet connection and refresh the page.');
+        }
     </script>
 </body>
 </html> 
